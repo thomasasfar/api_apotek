@@ -1,0 +1,238 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Roles {
+  SUPERADMIN
+  PRAMUNIAGA
+  TTF
+  APOTEKER
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  name     String @db.VarChar(40)
+  username String @unique @db.VarChar(40)
+  password String @db.VarChar(255)
+  role     Roles
+
+  purchases Purchase[]
+  sales     Sale[]
+
+  @@map("users")
+}
+
+model Supplier {
+  id      Int     @id @default(autoincrement())
+  name    String  @db.VarChar(255)
+  code    String  @unique @db.VarChar(20)
+  address String? @db.Text
+  phone   String? @db.VarChar(20)
+  email   String? @db.VarChar(50)
+  npwp    String? @db.VarChar(30)
+
+  purchase Purchase[]
+
+  @@map("suppliers")
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(100)
+  description String? @db.Text
+  is_default  Boolean @default(false)
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Unit {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(30)
+
+  productUnits ProductUnit[]
+
+  @@map("units")
+}
+
+model Group {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique @db.VarChar(100)
+  description String? @db.Text
+  is_default  Boolean @default(false)
+
+  products Product[]
+
+  @@map("groups")
+}
+
+model Location {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+
+  @@map("locations")
+}
+
+model Product {
+  id                        Int      @id @default(autoincrement())
+  code                      String   @unique @db.VarChar(255)
+  name                      String   @db.VarChar(255)
+  minimum_stock             Int
+  allow_sale_before_expired Int      @default(30)
+  description               String?  @db.Text
+  indication                String?  @db.Text
+  contraindication          String?  @db.Text
+  side_effects              String?  @db.Text
+  content                   String?  @db.Text
+  dose                      String?  @db.Text
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  category_id               Int
+  group_id                  Int
+
+  category Category @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  group    Group    @relation(fields: [group_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  productUnits ProductUnit[]
+  stocks       Stock[]
+  saleDetails  SaleDetail[]
+
+  @@map("products")
+}
+
+model ProductUnit {
+  id         Int     @id @default(autoincrement())
+  product_id Int
+  unit_id    Int
+  price      Float
+  is_default Boolean @default(false)
+  is_base    Boolean @default(false)
+  product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  unit       Unit    @relation(fields: [unit_id], references: [id])
+
+  fromUnitConversions UnitConversion[] @relation("FromProductUnitConversions")
+  toUnitConversions   UnitConversion[] @relation("ToProductUnitConversion")
+  purchaseDetails     PurchaseDetail[]
+  saleDetails         SaleDetail[]
+
+  @@unique([product_id, unit_id])
+  @@map("product_units")
+}
+
+model UnitConversion {
+  id                   Int         @id @default(autoincrement())
+  from_product_unit_id Int
+  to_product_unit_id   Int
+  conversion_value     Float
+  fromProductUnit      ProductUnit @relation("FromProductUnitConversions", fields: [from_product_unit_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  toProductUnit        ProductUnit @relation("ToProductUnitConversion", fields: [to_product_unit_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([from_product_unit_id, to_product_unit_id])
+  @@map("unit_conversions")
+}
+
+model Stock {
+  id           Int       @id @default(autoincrement())
+  product_id   Int
+  batch_number String?   @db.VarChar(50)
+  expired_date DateTime? @db.Date
+  quantity     Int
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  product         Product          @relation(fields: [product_id], references: [id])
+  purchaseDetails PurchaseDetail[]
+  saleStock       SaleStock[]
+
+  @@map("stocks")
+}
+
+model Purchase {
+  id            Int      @id @default(autoincrement())
+  code          String   @db.VarChar(50)
+  supplier_id   Int
+  user_id       Int
+  purchase_date DateTime @db.Date
+  note          String?  @db.Text
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  purchaseDetails PurchaseDetail[]
+  supplier        Supplier         @relation(fields: [supplier_id], references: [id])
+  user            User             @relation(fields: [user_id], references: [id])
+
+  @@unique([code, supplier_id])
+  @@map("purchases")
+}
+
+model PurchaseDetail {
+  purchase_id     Int
+  stock_id        Int
+  amount          Int
+  price           Float
+  product_unit_id Int
+
+  purchase    Purchase    @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  stock       Stock       @relation(fields: [stock_id], references: [id])
+  productUnit ProductUnit @relation(fields: [product_unit_id], references: [id])
+
+  @@unique([purchase_id, stock_id])
+  @@map("purchase_details")
+}
+
+model Sale {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique @db.VarChar(50)
+  user_id       Int
+  total_payment Float
+  change        Float
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  saleDetails SaleDetail[]
+  user        User         @relation(fields: [user_id], references: [id])
+
+  @@map("sales")
+}
+
+model SaleDetail {
+  id              Int   @id @default(autoincrement())
+  sale_id         Int
+  product_id      Int
+  product_unit_id Int
+  quantity        Int
+  price           Float
+
+  sale        Sale        @relation(fields: [sale_id], references: [id])
+  product     Product     @relation(fields: [product_id], references: [id])
+  productUnit ProductUnit @relation(fields: [product_unit_id], references: [id])
+
+  saleStocks SaleStock[]
+
+  @@unique([sale_id, product_id])
+  @@map("sale_details")
+}
+
+model SaleStock {
+  sale_detail_id Int
+  stock_id       Int
+  quantity       Int
+
+  saleDetail SaleDetail @relation(fields: [sale_detail_id], references: [id])
+  stock      Stock      @relation(fields: [stock_id], references: [id])
+
+  @@unique([sale_detail_id, stock_id])
+  @@map("sale_stocks")
+}
